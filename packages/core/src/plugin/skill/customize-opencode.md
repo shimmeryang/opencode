@@ -72,7 +72,8 @@ Every field is optional.
 
   "skills": {
     "paths": [".opencode/skills", "/abs/path/to/skills"],
-    "urls": ["https://example.com/.well-known/skills/"]
+    "urls": ["https://example.com/.well-known/skills/"],
+    "exclude_dir": ["~/.claude/skills", "~/.agents/skills"]
   },
 
   "references": {
@@ -150,7 +151,8 @@ Every field is optional.
 Shape notes worth being explicit about:
 
 - `model` always carries a provider prefix: `"anthropic/claude-sonnet-4-6"`.
-- `skills` is an object with `paths` and/or `urls`, not an array.
+- `skills` is an object with `paths`, `urls`, and/or `exclude_dir`, not an array.
+- `skills.exclude_dir` is an array of directory paths to skip during skill discovery. It supports `~/`, absolute paths, and paths relative to the project config. Use it to suppress auto-loaded external skills under `~/.claude/skills/` or `~/.agents/skills/` without moving the files.
 - `references` is an object keyed by alias. Each value is a local path, Git repository, or string shorthand.
 - `agent` is an object keyed by agent name, not an array.
 - `command` is an object keyed by command name, not an array.
@@ -187,7 +189,9 @@ description: One sentence covering what this skill does AND when to trigger it. 
 
 Register skills from non-default locations via `skills.paths` (scanned
 recursively for `**/SKILL.md`) and `skills.urls` (each URL serves a list of
-skills).
+skills). Exclude directories from discovery via `skills.exclude_dir` — useful
+for hiding auto-loaded external skills such as `~/.claude/skills/` or
+`~/.agents/skills/` without removing them.
 
 ## References
 
