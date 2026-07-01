@@ -3,7 +3,11 @@ import { useTheme } from "../context/theme"
 import { useKV } from "../context/kv"
 import type { JSX } from "@opentui/solid"
 import type { RGBA } from "@opentui/core"
-import "opentui-spinner/solid"
+import { registerSpinner } from "opentui-spinner/solid"
+// Explicit call (not a bare side-effect import) so the registration survives
+// Bun.build tree-shaking when compiling the binary. See bg-pulse.tsx for the
+// same direct-extend pattern.
+registerSpinner()
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
