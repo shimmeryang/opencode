@@ -226,6 +226,26 @@ const discoverSkills = Effect.fnUntraced(function* (
     }
   }
 
+  const excludePaths = (cfg.skills?.exclude_dir ?? []).map((item) => {
+    const expanded = item.startsWith("~/") ? path.join(global.home, item.slice(2)) : item
+    const resolved = path.isAbsolute(expanded)
+      ? path.resolve(expanded)
+      : path.resolve(directory, expanded)
+    return path.normalize(resolved)
+  })
+
+  if (excludePaths.length > 0) {
+    const filtered = Array.from(state.matches).filter((match) => {
+      const normalizedMatch = path.normalize(match)
+      const isExcluded = excludePaths.some((excludeDir) => {
+        const relative = path.relative(excludeDir, normalizedMatch)
+        return !relative.startsWith("..") && !path.isAbsolute(relative)
+      })
+      return !isExcluded
+    })
+    state.matches = new Set(filtered)
+  }
+
   return {
     matches: Array.from(state.matches),
     dirs: Array.from(state.dirs),
