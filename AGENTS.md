@@ -1,161 +1,70 @@
-- To regenerate the legacy JavaScript SDK, run `./packages/sdk/js/script/build.ts`.
-- After changing the public Protocol or Server `HttpApi`, run `bun run generate` from `packages/client`. Do not edit `src/generated` or `src/generated-effect` directly.
-- Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
-- The default branch in this repo is `dev`.
-- Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
+# Repository Guide
 
-## Branch Names
+## Essentials
 
-Use a short branch name of at most three words, separated by hyphens. Do not use slashes or type prefixes such as `feat/` or `fix/`.
+- Bun is required (`packageManager`: `bun@1.3.14`); use `bun install` from the repo root.
+- The default branch is `dev`; local `main` may not exist, so diff against `dev` or `origin/dev`.
+- Root `bun test` intentionally fails via `do-not-run-tests-from-root`; run tests from the package that owns the change.
+- Root `bun typecheck` runs `bun turbo typecheck`; package-level typechecks are `bun typecheck` from the package directory and use `tsgo`, not direct `tsc`.
+- Root lint is `bun lint` (`oxlint`). Formatting is `./script/format.ts`.
 
-Examples: `session-recovery`, `fix-scroll-state`, `regenerate-sdk`.
+## Common Commands
 
-## Commits and PR Titles
+- CLI/TUI dev from root: `bun dev [directory]`; use `bun dev .` to run against this repo, `bun dev serve --port 4096` for the headless server, and `bun dev web` for server + web.
+- `packages/opencode`: `bun dev`, `bun test`, `bun typecheck`, `bun run test:httpapi`, `bun run build`.
+- `packages/core`: `bun test`, `bun typecheck`, `bun run db`, `bun run migration`.
+- `packages/app`: `bun dev`, `bun test`, `bun run test:e2e:local`, `bun typecheck`; Playwright uses Chromium and `PLAYWRIGHT_*` env vars from `playwright.config.ts`.
+- Focused Bun tests: run from the owning package, e.g. `bun test test/foo.test.ts --only-failures` or the package's existing `test` script.
 
-Use conventional commit-style messages and PR titles: `type(scope): summary`.
+## Generated Code
 
-Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`.
+- After public Protocol or Server `HttpApi` changes, run `bun run generate` from `packages/client`; do not edit `packages/client/src/generated` or `packages/client/src/generated-effect` directly.
+- To verify generated client output without keeping changes: `bun run check:generated` from `packages/client`.
+- Legacy JS SDK generation is `./packages/sdk/js/script/build.ts`; root `./script/generate.ts` runs legacy SDK generation, `bun dev generate` from `packages/opencode`, then formatting.
 
-Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(sdk): regenerate types`.
+## Package Boundaries
 
-## Style Guide
+- Runtime dependency direction: `schema -> protocol -> server`; `core` may compose runtime behavior; `client` runtime depends on `schema`/`protocol` but not `core`/`server`; `sdk-next` composes client, core, and server.
+- `packages/opencode` owns CLI, server orchestration, session runtime, config, permissions, tools, and integrations.
+- `packages/core` owns reusable runtime services and Drizzle schema/migrations (`packages/core/src/**/*.sql.ts`, `packages/core/migration`).
+- `packages/schema` owns browser-safe wire/storage contracts only; read `packages/schema/AGENTS.md` before changing public contracts.
+- `packages/llm` is the Effect Schema-first LLM core; keep session auth/plugins/permissions in `packages/opencode/src/session/llm.ts` and adapters, not in `packages/llm`.
+- `packages/app` is the Solid/Vite web UI; `packages/desktop` is Electron around the app; `packages/tui` is the OpenTUI/Solid terminal UI.
 
-### General Principles
+## Local UI / TUI Gotchas
 
-- Keep things in one function unless composable or reusable
-- Do not extract single-use helpers preemptively. Inline the logic at the call site unless the helper is reused, hides a genuinely complex boundary, or has a clear independent name that improves the caller.
-- Avoid `try`/`catch` where possible
-- Avoid using the `any` type
-- Use Bun APIs when possible, like `Bun.file()`
-- Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
-- Prefer functional array methods (flatMap, filter, map) over for loops; use type guards on filter to maintain type inference downstream
-- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
-- In Effect generators, bind services to named variables before calling methods. Do not use nested service yields such as `yield* (yield* Foo.Service).bar()`.
+- For app UI/CSS changes, do not rely on `opencode dev web` because it proxies `https://app.opencode.ai`; run backend `bun run --conditions=browser ./src/index.ts serve --port 4096` from `packages/opencode` and app `bun dev -- --port 4444` from `packages/app`.
+- Running `bun dev` from `packages/opencode` starts an interactive TUI; use a background terminal/tmux and stop it explicitly when done.
+- Desktop renderer code should call only `window.api` from `packages/desktop/src/preload`; main-process IPC handlers live in `packages/desktop/src/main/ipc.ts`.
 
-Reduce total variable count by inlining when a value is only used once.
+## Code Style That Differs From Defaults
 
-```ts
-// Good
-const journal = await Bun.file(path.join(dir, "journal.json")).json()
+- Prefer Bun APIs (`Bun.file`, `Bun.write`) where appropriate; avoid `any`, unnecessary `let`, unnecessary destructuring, and avoid `else` after early returns.
+- Do not add comments unless they explain non-obvious constraints or surprising behavior.
+- Do not alias imports or use star imports; import the module's exported namespace by name (for example `import { Project } from "@opencode-ai/core/project"`).
+- Module organization uses flat exports plus self-reexport (`export * as Foo from "./foo"`); do not use `export namespace Foo {}`. For single-module `index.ts`, self-reexport from `"."`; avoid barrel `index.ts` files for multi-sibling directories.
+- Drizzle schema fields use snake_case property names so column names do not need explicit strings.
 
-// Bad
-const journalPath = path.join(dir, "journal.json")
-const journal = await Bun.file(journalPath).json()
-```
+## Effect Conventions
 
-### Destructuring
+- Use the repo's `effect` skill when editing Effect v4 / effect-smol code.
+- In generators, bind services to named variables before calling methods; do not write nested service yields like `yield* (yield* Foo.Service).bar()`.
+- Prefer `Effect.gen`, `Effect.fn`, `Effect.void`, `Schema.Class`, branded schemas, `Schema.TaggedErrorClass`, and `yield* new MyError(...)` for direct failures.
+- Use Effect platform services (`FileSystem`, `HttpClient`, `Path`, `Clock`, `DateTime`, `ChildProcessSpawner`) instead of raw platform APIs inside Effect code.
+- `Effect.fork`/`forkDaemon` are not available in this Effect v4 beta; fork into a scope with `Effect.forkIn(scope)` or use repo patterns.
 
-Avoid unnecessary destructuring. Use dot notation to preserve context.
+## Tests
 
-```ts
-// Good
-obj.a
-obj.b
+- Avoid mocks where possible; test real implementation and avoid duplicating implementation logic in tests.
+- For `packages/opencode` Effect tests, use `testEffect(...)` and fixtures documented in `packages/opencode/test/AGENTS.md`; prefer readiness signals over fixed sleeps for concurrent work.
+- For `packages/llm` provider tests, replay fixtures by default; live calls require `RECORD=true` plus provider API-key env vars, and narrow filters such as `RECORDED_PROVIDER`, `RECORDED_PREFIX`, `RECORDED_TAGS`, or `RECORDED_TEST`.
 
-// Bad
-const { a, b } = obj
-```
+## Git / PR Conventions
 
-### Imports
+- Branch names: max three short words, hyphen-separated, no slashes or type prefixes (for example `session-recovery`).
+- Commits and PR titles use conventional style: `feat|fix|docs|chore|refactor|test(scope): summary`.
+- PRs are expected to link an issue, explain verification, stay focused, and include screenshots/recordings for UI changes.
 
-- Never alias imports. Do not use `import { foo as bar } from "..."` or renamed imports like `resolve as pathResolve`.
-- Never use star imports. Do not use `import * as Foo from "..."` or `import type * as Foo from "..."`.
-- If a namespace-style value is needed, import the module's own exported namespace by name, for example `import { Project } from "@opencode-ai/core/project"`, then reference `Project.ID`.
-- Prefer dynamic imports for heavy modules that are only needed in selected code paths, especially in startup-sensitive entrypoints. Destructure dynamic import bindings near the top of the narrowest scope that needs them so they read like normal imports. Avoid inline chains such as `await import("./module").then((mod) => mod.value())` or `(await import("./module")).value()`. Keep branch-specific imports inside the branch that needs them to preserve lazy loading.
+## More Specific Instructions
 
-### Variables
-
-Prefer `const` over `let`. Use ternaries or early returns instead of reassignment.
-
-```ts
-// Good
-const foo = condition ? 1 : 2
-
-// Bad
-let foo
-if (condition) foo = 1
-else foo = 2
-```
-
-### Control Flow
-
-Avoid `else` statements. Prefer early returns.
-
-```ts
-// Good
-function foo() {
-  if (condition) return 1
-  return 2
-}
-
-// Bad
-function foo() {
-  if (condition) return 1
-  else return 2
-}
-```
-
-### Complex Logic
-
-When a function has several validation branches or supporting details, make the main function read as the happy path and move supporting details into small helpers below it.
-
-```ts
-// Good
-export function loadThing(input: unknown) {
-  const config = requireConfig(input)
-  const metadata = readMetadata(input)
-  return createThing({ config, metadata })
-}
-
-function requireConfig(input: unknown) {
-  ...
-}
-```
-
-- Keep helpers close to the code they support, below the main export when that improves readability.
-- Do not over-abstract simple expressions into many single-use helpers; extract only when it names a real concept like `requireConfig` or `readMetadata`.
-- Do not return `Effect` from helpers unless they actually perform effectful work. Synchronous parsing, validation, and option building should stay synchronous.
-- Prefer Effect schema helpers such as `Schema.UnknownFromJsonString` and `Schema.decodeUnknownOption` over manual `JSON.parse` wrapped in `Effect.try` when parsing untrusted JSON strings.
-- Add comments for non-obvious constraints and surprising behavior, not for obvious assignments or control flow.
-
-### Schema Definitions (Drizzle)
-
-Use snake_case for field names so column names don't need to be redefined as strings.
-
-```ts
-// Good
-const table = sqliteTable("session", {
-  id: text().primaryKey(),
-  project_id: text().notNull(),
-  created_at: integer().notNull(),
-})
-
-// Bad
-const table = sqliteTable("session", {
-  id: text("id").primaryKey(),
-  projectID: text("project_id").notNull(),
-  createdAt: integer("created_at").notNull(),
-})
-```
-
-## Testing
-
-- Avoid mocks as much as possible, you shouldn't be using globalThis.\* at all unless it's the only option.
-- Test actual implementation, do not duplicate logic into tests
-- Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
-
-## Type Checking
-
-- Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
-
-## V2 Session Core
-
-- Keep durable prompt admission separate from model execution. `SessionV2.prompt(...)` admits one durable `session_input` row before scheduling advisory `SessionExecution.wake(sessionID)` unless `resume: false` requests admit-only behavior. The serialized runner promotes admitted inputs into visible user messages at safe boundaries.
-- Reusing a Session ID adopts the existing Session. Reusing a prompt message ID reconciles an exact retry only when Session, prompt, and delivery mode match; conflicting reuse fails. Historical projected prompts lazily synthesize promoted inbox records during exact retry.
-- Keep `SessionExecution` process-global and Session-ID based. Its local implementation owns the process-local Session coordinator and discovers placement through `SessionStore` plus `LocationServiceMap.get(session.location)` only when a drain starts; no layer should take a Session ID. V2 interruption targets the active process-local ownership chain for that Session; idle or missing interruption is a no-op.
-- Keep `SessionRunner`, model resolution, tool registry, permissions, and filesystem Location-scoped. Omitted `Location.workspaceID` means implicit-local placement; explicit workspace identity remains reserved for future placement semantics.
-- Preserve one explicit `llm.stream(request)` call per provider turn and reload projected history before durable continuation. Do not bridge through legacy `SessionPrompt.loop(...)` or delegate orchestration to an in-memory tool loop.
-- Keep local Session drains process-local until clustering is implemented. `SessionRunCoordinator` joins explicit same-Session resumes, coalesces prompt wakeups, and allows different Sessions to run concurrently. Advisory wakes drain eligible durable inbox rows only; post-crash continuation recovery requires a separate explicit design before it may retry provider work. A drain has no durable identity or transcript boundary.
-- Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input remains pending until the Session would otherwise become idle; promote one queued input at that boundary, then reevaluate continuation before promoting another. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
-- Keep EventV2 replay owner claims separate from clustered Session execution ownership.
-- Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
+- Package-level `AGENTS.md` files override or extend this guide; check them before touching `packages/opencode`, `packages/schema`, `packages/llm`, `packages/app`, `packages/desktop`, tests, server routes, or tools.
